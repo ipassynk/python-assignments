@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  app-services:
+    hostname: app-services
+    build:
+      context: .
+      dockerfile: Dockerfile.app-services
+    container_name: app-services
+    volumes:
+      - ./monitor_logs:/var/log/monitor
+    networks:
+      - app-network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres && curl -f http://localhost:15672 && curl -f http://localhost" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  injest:
+    hostname: injest
+    build:
+      context: .
+      dockerfile: Dockerfile.injest
+    container_name: injest
+    ports:
+      - "443:443"
+    volumes:
+      - ./monitor_logs:/var/log/monitor
+    networks:
+      - app-network
+    depends_on:
+      - elasticsearch
+      - app-services
+
+  elasticsearch:
+    image: elasticsearch:8.11.0
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - app-network
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  elasticsearch_data:

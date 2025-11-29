@@ -1,0 +1,41 @@
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+    postgresql \
+    postgresql-contrib \
+    rabbitmq-server \
+    apache2 \
+    curl \
+    cron \
+    python3 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN echo "host all all 0.0.0.0/0 md5" >> /etc/postgresql/14/main/pg_hba.conf && \
+    echo "listen_addresses='*'" >> /etc/postgresql/14/main/postgresql.conf
+
+USER postgres
+RUN /etc/init.d/postgresql start && \
+    psql --command "ALTER USER postgres WITH SUPERUSER PASSWORD 'postgres';" && \
+    createdb -O postgres mydb
+USER root
+
+RUN rabbitmq-plugins enable rabbitmq_management
+
+RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf
+
+COPY start.sh /start.sh
+RUN chmod +x /start.sh
+
+COPY monitor.py /usr/local/bin/monitor.py
+RUN chmod +x /usr/local/bin/monitor.py
+
+COPY crontab /etc/cron.d/monitor-cron
+RUN chmod 0644 /etc/cron.d/monitor-cron && \
+    crontab /etc/cron.d/monitor-cron && \
+    touch /var/log/cron.log
+
+EXPOSE 5432 5672 15672 80
+
+CMD ["/start.sh"]
